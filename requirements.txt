@@ -1,0 +1,10 @@
+boto3>=1.28.0
+botocore>=1.31.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+rich>=13.0.0
+typer>=0.9.0
+pytest>=7.4.0
+pytest-cov>=4.1.0
+mypy>=1.5.0
+ruff>=0.0.280 
