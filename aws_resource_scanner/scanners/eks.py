@@ -63,6 +63,10 @@ class EKSClusterScanner(BaseScanner[EKSCluster]):
                     subnet_ids = vpc_config.get("subnetIds", [])
                     security_group_ids = vpc_config.get("securityGroupIds", [])
                     
+                    # Extract endpoint access configuration
+                    endpoint_public_access = vpc_config.get("endpointPublicAccess", False)
+                    endpoint_private_access = vpc_config.get("endpointPrivateAccess", False)
+                    
                     # Parse tags
                     tags = cluster.get("tags", {})
                     
@@ -81,6 +85,8 @@ class EKSClusterScanner(BaseScanner[EKSCluster]):
                             role_arn=role_arn,
                             created_at=created_at,
                             tags=tags,
+                            endpoint_public_access=endpoint_public_access,
+                            endpoint_private_access=endpoint_private_access,
                         )
                     )
                     

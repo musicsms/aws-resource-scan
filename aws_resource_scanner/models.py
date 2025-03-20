@@ -57,6 +57,8 @@ class EKSCluster(AWSResource):
     security_group_ids: List[str] = Field(default_factory=list)
     role_arn: Optional[str] = None
     created_at: Optional[datetime] = None
+    endpoint_public_access: bool = False
+    endpoint_private_access: bool = False
 
 
 class NodeGroup(AWSResource):
