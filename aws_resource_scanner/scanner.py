@@ -14,6 +14,12 @@ from aws_resource_scanner.scanners.elb import LoadBalancerScanner
 from aws_resource_scanner.scanners.lambda_function import LambdaFunctionScanner
 from aws_resource_scanner.scanners.s3 import S3BucketScanner
 from aws_resource_scanner.scanners.security_group import SecurityGroupScanner
+from aws_resource_scanner.scanners.vpc import VPCScanner
+from aws_resource_scanner.scanners.vpc_resources import (
+    SubnetScanner, InternetGatewayScanner, NatGatewayScanner, 
+    RouteTableScanner, NetworkACLScanner, VPCEndpointScanner,
+    VPCPeeringConnectionScanner
+)
 from aws_resource_scanner.utils.config import ScannerConfig
 from aws_resource_scanner.utils.logger import logger
 from aws_resource_scanner.utils.output import save_output
@@ -160,37 +166,32 @@ class AWSScannerBuilder:
         return self
 
     def with_resource_types(self, resource_types: List[str]) -> "AWSScannerBuilder":
-        """Set specific resource types to scan.
+        """Set resource types to scan.
 
         Args:
-            resource_types: List of resource type names
+            resource_types: List of resource type identifiers
 
         Returns:
             Self for chaining
         """
         valid_types = {
-            "ec2", "sg", "security_group", "eks", "node_group", "lb", "load_balancer",
-            "s3", "lambda", "asg", "auto_scaling_group", "all"
+            "ec2", "sg", "eks", "node_group", "lb", 
+            "s3", "lambda", "asg", "vpc", "subnet", "igw", "nat", 
+            "rtb", "nacl", "endpoint", "peering", "all"
         }
         
-        for rt in resource_types:
-            rt_lower = rt.lower()
-            if rt_lower == "all":
+        for resource_type in resource_types:
+            resource_type = resource_type.lower()
+            if resource_type not in valid_types:
+                logger.warning(f"Unknown resource type: {resource_type}")
+                continue
+                
+            if resource_type == "all":
                 self.resource_types = valid_types - {"all"}
                 break
                 
-            # Map aliases to canonical names
-            if rt_lower == "sg":
-                self.resource_types.add("security_group")
-            elif rt_lower == "lb":
-                self.resource_types.add("load_balancer")
-            elif rt_lower == "asg":
-                self.resource_types.add("auto_scaling_group")
-            elif rt_lower in valid_types:
-                self.resource_types.add(rt_lower)
-            else:
-                logger.warning(f"Unknown resource type: {rt}, skipping")
-        
+            self.resource_types.add(resource_type)
+            
         return self
 
     def build(self) -> "AWSResourceScanner":
@@ -219,7 +220,8 @@ class AWSResourceScanner:
         self.config = config
         self.resource_types = resource_types or {
             "ec2", "security_group", "eks", "node_group", "load_balancer",
-            "s3", "lambda", "auto_scaling_group"
+            "s3", "lambda", "auto_scaling_group", "vpc", "subnet", "igw", 
+            "nat", "rtb", "nacl", "endpoint", "peering"
         }
         self.scanners = {}
         
@@ -247,59 +249,138 @@ class AWSResourceScanner:
             
         if not self.resource_types or "auto_scaling_group" in self.resource_types:
             self.scanners["auto_scaling_group"] = AutoScalingGroupScanner(config)
+            
+        if not self.resource_types or "vpc" in self.resource_types:
+            self.scanners["vpc"] = VPCScanner(config)
+            
+        if not self.resource_types or "subnet" in self.resource_types:
+            self.scanners["subnet"] = SubnetScanner(config)
+            
+        if not self.resource_types or "igw" in self.resource_types:
+            self.scanners["igw"] = InternetGatewayScanner(config)
+            
+        if not self.resource_types or "nat" in self.resource_types:
+            self.scanners["nat"] = NatGatewayScanner(config)
+            
+        if not self.resource_types or "rtb" in self.resource_types:
+            self.scanners["rtb"] = RouteTableScanner(config)
+            
+        if not self.resource_types or "nacl" in self.resource_types:
+            self.scanners["nacl"] = NetworkACLScanner(config)
+            
+        if not self.resource_types or "endpoint" in self.resource_types:
+            self.scanners["endpoint"] = VPCEndpointScanner(config)
+            
+        if not self.resource_types or "peering" in self.resource_types:
+            self.scanners["peering"] = VPCPeeringConnectionScanner(config)
 
     def scan(self) -> ScanResult:
         """Scan AWS resources based on the configuration.
 
         Returns:
-            ScanResult containing all scanned resources
+            ScanResult with all scanned resources
         """
-        logger.info(f"Starting AWS resource scan in regions: {', '.join(self.config.regions)}")
+        # Create result object
+        result = ScanResult(regions=list(self.config.regions))
         
-        # Initialize scan result
-        result = ScanResult(regions=self.config.regions)
+        # EC2 instances
+        if not self.resource_types or "ec2" in self.resource_types:
+            ec2_scanner = EC2Scanner(self.config)
+            result.ec2_instances = ec2_scanner.scan()
+            
+        # Security groups
+        if not self.resource_types or "sg" in self.resource_types:
+            sg_scanner = SecurityGroupScanner(self.config)
+            result.security_groups = sg_scanner.scan()
+            
+        # EKS clusters
+        if not self.resource_types or "eks" in self.resource_types:
+            eks_scanner = EKSClusterScanner(self.config)
+            result.eks_clusters = eks_scanner.scan()
+            
+        # EKS node groups
+        if not self.resource_types or "node_group" in self.resource_types:
+            node_group_scanner = NodeGroupScanner(self.config)
+            result.node_groups = node_group_scanner.scan()
+            
+        # Load balancers
+        if not self.resource_types or "lb" in self.resource_types:
+            lb_scanner = LoadBalancerScanner(self.config)
+            result.load_balancers = lb_scanner.scan()
+            
+        # S3 buckets
+        if not self.resource_types or "s3" in self.resource_types:
+            s3_scanner = S3BucketScanner(self.config)
+            result.s3_buckets = s3_scanner.scan()
+            
+        # Lambda functions
+        if not self.resource_types or "lambda" in self.resource_types:
+            lambda_scanner = LambdaFunctionScanner(self.config)
+            result.lambda_functions = lambda_scanner.scan()
+            
+        # Auto Scaling groups
+        if not self.resource_types or "asg" in self.resource_types:
+            asg_scanner = AutoScalingGroupScanner(self.config)
+            result.auto_scaling_groups = asg_scanner.scan()
+            
+        # VPCs
+        if not self.resource_types or "vpc" in self.resource_types:
+            vpc_scanner = VPCScanner(self.config)
+            result.vpcs = vpc_scanner.scan()
+            
+        # Subnets
+        if not self.resource_types or "subnet" in self.resource_types:
+            subnet_scanner = SubnetScanner(self.config)
+            result.subnets = subnet_scanner.scan()
+            
+        # Internet Gateways
+        if not self.resource_types or "igw" in self.resource_types:
+            igw_scanner = InternetGatewayScanner(self.config)
+            result.internet_gateways = igw_scanner.scan()
+            
+        # NAT Gateways
+        if not self.resource_types or "nat" in self.resource_types:
+            nat_scanner = NatGatewayScanner(self.config)
+            result.nat_gateways = nat_scanner.scan()
+            
+        # Route Tables
+        if not self.resource_types or "rtb" in self.resource_types:
+            rtb_scanner = RouteTableScanner(self.config)
+            result.route_tables = rtb_scanner.scan()
+            
+        # Network ACLs
+        if not self.resource_types or "nacl" in self.resource_types:
+            nacl_scanner = NetworkACLScanner(self.config)
+            result.network_acls = nacl_scanner.scan()
+            
+        # VPC Endpoints
+        if not self.resource_types or "endpoint" in self.resource_types:
+            endpoint_scanner = VPCEndpointScanner(self.config)
+            result.vpc_endpoints = endpoint_scanner.scan()
+            
+        # VPC Peering Connections
+        if not self.resource_types or "peering" in self.resource_types:
+            peering_scanner = VPCPeeringConnectionScanner(self.config)
+            result.vpc_peering_connections = peering_scanner.scan()
         
-        # Scan EC2 instances
-        if "ec2" in self.scanners:
-            logger.info("Scanning EC2 instances...")
-            result.ec2_instances = self.scanners["ec2"].scan()
-            
-        # Scan Security Groups
-        if "security_group" in self.scanners:
-            logger.info("Scanning Security Groups...")
-            result.security_groups = self.scanners["security_group"].scan()
-            
-        # Scan EKS clusters
-        if "eks" in self.scanners:
-            logger.info("Scanning EKS clusters...")
-            result.eks_clusters = self.scanners["eks"].scan()
-            
-        # Scan EKS node groups
-        if "node_group" in self.scanners:
-            logger.info("Scanning EKS node groups...")
-            result.node_groups = self.scanners["node_group"].scan()
-            
-        # Scan load balancers
-        if "load_balancer" in self.scanners:
-            logger.info("Scanning Load Balancers...")
-            result.load_balancers = self.scanners["load_balancer"].scan()
-            
-        # Scan S3 buckets
-        if "s3" in self.scanners:
-            logger.info("Scanning S3 buckets...")
-            result.s3_buckets = self.scanners["s3"].scan()
-            
-        # Scan Lambda functions
-        if "lambda" in self.scanners:
-            logger.info("Scanning Lambda functions...")
-            result.lambda_functions = self.scanners["lambda"].scan()
-            
-        # Scan Auto Scaling Groups
-        if "auto_scaling_group" in self.scanners:
-            logger.info("Scanning Auto Scaling Groups...")
-            result.auto_scaling_groups = self.scanners["auto_scaling_group"].scan()
-            
-        logger.info("AWS resource scan complete")
+        # Log summary
+        logger.info(f"Scan complete. Found:")
+        logger.info(f"  EC2 instances: {len(result.ec2_instances)}")
+        logger.info(f"  Security groups: {len(result.security_groups)}")
+        logger.info(f"  EKS clusters: {len(result.eks_clusters)}")
+        logger.info(f"  EKS node groups: {len(result.node_groups)}")
+        logger.info(f"  Load balancers: {len(result.load_balancers)}")
+        logger.info(f"  S3 buckets: {len(result.s3_buckets)}")
+        logger.info(f"  Lambda functions: {len(result.lambda_functions)}")
+        logger.info(f"  Auto Scaling groups: {len(result.auto_scaling_groups)}")
+        logger.info(f"  VPCs: {len(result.vpcs)}")
+        logger.info(f"  Subnets: {len(result.subnets)}")
+        logger.info(f"  Internet Gateways: {len(result.internet_gateways)}")
+        logger.info(f"  NAT Gateways: {len(result.nat_gateways)}")
+        logger.info(f"  Route Tables: {len(result.route_tables)}")
+        logger.info(f"  Network ACLs: {len(result.network_acls)}")
+        logger.info(f"  VPC Endpoints: {len(result.vpc_endpoints)}")
+        logger.info(f"  VPC Peering Connections: {len(result.vpc_peering_connections)}")
         
         return result
         

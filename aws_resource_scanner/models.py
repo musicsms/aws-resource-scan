@@ -19,16 +19,34 @@ class AWSResource(BaseModel):
     tags: Dict[str, str] = Field(default_factory=dict)
 
 
+class NetworkInterface(BaseModel):
+    """EC2 Network Interface model."""
+    
+    network_interface_id: str
+    subnet_id: str
+    vpc_id: str
+    description: Optional[str] = None
+    status: str  # "available", "in-use", etc.
+    primary: bool = False
+    private_ip_addresses: List[Dict[str, Any]] = Field(default_factory=list)
+    # This would include both private_ip and any associated public_ip
+    security_group_ids: List[str] = Field(default_factory=list)
+    attachment: Optional[Dict[str, Any]] = None
+
+
 class EC2Instance(AWSResource):
     """EC2 instance resource model."""
 
     resource_type: str = "ec2_instance"
     instance_type: str
     state: str
+    # Keep these for backward compatibility and primary interface
     private_ip_address: Optional[str] = None
     public_ip_address: Optional[str] = None
     vpc_id: Optional[str] = None
     subnet_id: Optional[str] = None
+    # Add support for multiple interfaces
+    network_interfaces: List[NetworkInterface] = Field(default_factory=list)
     launch_time: Optional[datetime] = None
     security_group_ids: List[str] = Field(default_factory=list)
     iam_instance_profile: Optional[str] = None
@@ -131,6 +149,112 @@ class AutoScalingGroup(AWSResource):
     target_group_arns: List[str] = Field(default_factory=list)
 
 
+class VPC(AWSResource):
+    """VPC resource model."""
+
+    resource_type: str = "vpc"
+    cidr_block: str
+    is_default: bool = False
+    state: str
+    dhcp_options_id: Optional[str] = None
+    instance_tenancy: Optional[str] = None
+    enable_dns_support: bool = True
+    enable_dns_hostnames: bool = False
+    owner_id: Optional[str] = None
+
+
+class Subnet(AWSResource):
+    """Subnet resource model."""
+
+    resource_type: str = "subnet"
+    vpc_id: str
+    cidr_block: str
+    availability_zone: str
+    available_ip_address_count: int
+    default_for_az: bool = False
+    map_public_ip_on_launch: bool = False
+    state: str
+    owner_id: Optional[str] = None
+
+
+class InternetGateway(AWSResource):
+    """Internet Gateway resource model."""
+
+    resource_type: str = "internet_gateway"
+    vpc_id: Optional[str] = None
+    state: Optional[str] = None
+    owner_id: Optional[str] = None
+
+
+class NatGateway(AWSResource):
+    """NAT Gateway resource model."""
+
+    resource_type: str = "nat_gateway"
+    vpc_id: str
+    subnet_id: str
+    state: str
+    connectivity_type: str  # "public" or "private"
+    elastic_ip_address: Optional[str] = None
+    private_ip_address: Optional[str] = None
+    network_interface_id: Optional[str] = None
+    create_time: Optional[datetime] = None
+
+
+class RouteTable(AWSResource):
+    """Route Table resource model."""
+
+    resource_type: str = "route_table"
+    vpc_id: str
+    routes: List[Dict[str, Any]] = Field(default_factory=list)
+    associations: List[Dict[str, Any]] = Field(default_factory=list)
+    propagating_vgws: List[Dict[str, Any]] = Field(default_factory=list)
+    owner_id: Optional[str] = None
+
+
+class NetworkACL(AWSResource):
+    """Network ACL resource model."""
+
+    resource_type: str = "network_acl"
+    vpc_id: str
+    is_default: bool = False
+    entries: List[Dict[str, Any]] = Field(default_factory=list)
+    associations: List[Dict[str, Any]] = Field(default_factory=list)
+    owner_id: Optional[str] = None
+
+
+class VPCEndpoint(AWSResource):
+    """VPC Endpoint resource model."""
+
+    resource_type: str = "vpc_endpoint"
+    vpc_id: str
+    service_name: str
+    state: str
+    vpc_endpoint_type: str  # "Interface", "Gateway", or "GatewayLoadBalancer"
+    policy_document: Optional[str] = None
+    subnet_ids: List[str] = Field(default_factory=list)
+    network_interface_ids: List[str] = Field(default_factory=list)
+    dns_entries: List[Dict[str, str]] = Field(default_factory=list)
+    groups: List[Dict[str, str]] = Field(default_factory=list)
+    private_dns_enabled: bool = False
+    requester_managed: bool = False
+    created_at: Optional[datetime] = None
+    route_table_ids: List[str] = Field(default_factory=list)
+
+
+class VPCPeeringConnection(AWSResource):
+    """VPC Peering Connection resource model."""
+
+    resource_type: str = "vpc_peering_connection"
+    vpc_id: str  # Requester VPC ID
+    peer_vpc_id: str  # Accepter VPC ID
+    peer_owner_id: Optional[str] = None
+    peer_region: Optional[str] = None
+    status: Dict[str, str] = Field(default_factory=dict)
+    cidr_blocks: List[str] = Field(default_factory=list)
+    peer_cidr_blocks: List[str] = Field(default_factory=list)
+    expiration_time: Optional[datetime] = None
+
+
 class ScanResult(BaseModel):
     """Results of an AWS resource scan."""
 
@@ -144,6 +268,14 @@ class ScanResult(BaseModel):
     s3_buckets: List[S3Bucket] = Field(default_factory=list)
     lambda_functions: List[LambdaFunction] = Field(default_factory=list)
     auto_scaling_groups: List[AutoScalingGroup] = Field(default_factory=list)
+    vpcs: List[VPC] = Field(default_factory=list)
+    subnets: List[Subnet] = Field(default_factory=list)
+    internet_gateways: List[InternetGateway] = Field(default_factory=list)
+    nat_gateways: List[NatGateway] = Field(default_factory=list)
+    route_tables: List[RouteTable] = Field(default_factory=list)
+    network_acls: List[NetworkACL] = Field(default_factory=list)
+    vpc_endpoints: List[VPCEndpoint] = Field(default_factory=list)
+    vpc_peering_connections: List[VPCPeeringConnection] = Field(default_factory=list)
 
     class Config:
         """Pydantic config."""

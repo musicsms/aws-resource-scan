@@ -19,7 +19,7 @@ class ScannerConfig(BaseModel):
     """Configuration settings for the AWS resource scanner."""
 
     regions: List[str] = Field(
-        default_factory=lambda: [os.getenv("AWS_DEFAULT_REGION", "us-east-1")]
+        default_factory=lambda: [os.getenv("AWS_DEFAULT_REGION", "ap-southeast-1")]
     )
     profile_name: Optional[str] = Field(default=os.getenv("AWS_PROFILE"))
     access_key_id: Optional[str] = Field(default=os.getenv("AWS_ACCESS_KEY_ID"))

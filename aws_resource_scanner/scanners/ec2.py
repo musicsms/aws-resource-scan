@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 import boto3
 from botocore.exceptions import ClientError
 
-from aws_resource_scanner.models import EC2Instance
+from aws_resource_scanner.models import EC2Instance, NetworkInterface
 from aws_resource_scanner.scanners.base import BaseScanner
 from aws_resource_scanner.utils.logger import log_aws_error, logger
 
@@ -50,13 +50,15 @@ class EC2Scanner(BaseScanner[EC2Instance]):
                             
                             # Parse instance details
                             instance_type = instance.get("InstanceType", "unknown")
+                            
+                            # For backward compatibility - these come from the instance top level
                             private_ip = instance.get("PrivateIpAddress")
                             public_ip = instance.get("PublicIpAddress")
                             vpc_id = instance.get("VpcId")
                             subnet_id = instance.get("SubnetId")
                             launch_time = instance.get("LaunchTime")
                             
-                            # Get security group IDs
+                            # Get security group IDs at the instance level
                             security_group_ids = [
                                 sg.get("GroupId")
                                 for sg in instance.get("SecurityGroups", [])
@@ -75,6 +77,49 @@ class EC2Scanner(BaseScanner[EC2Instance]):
                             tags = self.parse_tags(instance.get("Tags", []))
                             name = tags.get("Name", instance_id)
                             
+                            # Process all network interfaces
+                            network_interfaces = []
+                            for interface in instance.get("NetworkInterfaces", []):
+                                interface_id = interface.get("NetworkInterfaceId")
+                                if not interface_id:
+                                    continue
+                                    
+                                # Get private IPs and associated public IPs
+                                private_ips = []
+                                for private_ip_info in interface.get("PrivateIpAddresses", []):
+                                    ip_data = {
+                                        "private_ip": private_ip_info.get("PrivateIpAddress"),
+                                        "primary": private_ip_info.get("Primary", False)
+                                    }
+                                    
+                                    # Add public IP if exists
+                                    if "Association" in private_ip_info and "PublicIp" in private_ip_info["Association"]:
+                                        ip_data["public_ip"] = private_ip_info["Association"]["PublicIp"]
+                                        
+                                    private_ips.append(ip_data)
+                                
+                                # Get security groups for this interface
+                                interface_sg_ids = [
+                                    sg.get("GroupId")
+                                    for sg in interface.get("Groups", [])
+                                    if sg.get("GroupId")
+                                ]
+                                
+                                # Create network interface object
+                                network_interfaces.append(
+                                    NetworkInterface(
+                                        network_interface_id=interface_id,
+                                        subnet_id=interface.get("SubnetId"),
+                                        vpc_id=interface.get("VpcId"),
+                                        description=interface.get("Description"),
+                                        status=interface.get("Status"),
+                                        primary=interface.get("Attachment", {}).get("DeviceIndex") == 0,
+                                        private_ip_addresses=private_ips,
+                                        security_group_ids=interface_sg_ids,
+                                        attachment=interface.get("Attachment")
+                                    )
+                                )
+                            
                             instances.append(
                                 EC2Instance(
                                     resource_id=instance_id,
@@ -92,6 +137,7 @@ class EC2Scanner(BaseScanner[EC2Instance]):
                                     iam_instance_profile=iam_profile,
                                     key_name=key_name,
                                     tags=tags,
+                                    network_interfaces=network_interfaces,
                                 )
                             )
                             
