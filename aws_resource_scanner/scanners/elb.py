@@ -75,33 +75,87 @@ class LoadBalancerScanner(BaseScanner[LoadBalancer]):
                             log_aws_error(e, self.service_name, "describe_tags", lb_arn)
                             tags = {}
                         
-                        # Get listeners for the load balancer
+                        # Get listeners and their rules
                         listeners = []
+                        routing_rules = []
                         try:
                             listeners_paginator = client.get_paginator("describe_listeners")
                             for listeners_page in listeners_paginator.paginate(LoadBalancerArn=lb_arn):
                                 for listener in listeners_page.get("Listeners", []):
-                                    listeners.append({
+                                    listener_arn = listener.get("ListenerArn")
+                                    listener_info = {
                                         "port": listener.get("Port"),
                                         "protocol": listener.get("Protocol"),
                                         "ssl_policy": listener.get("SslPolicy"),
-                                    })
+                                        "certificates": listener.get("Certificates", []),
+                                        "alpn_policy": listener.get("AlpnPolicy", [])
+                                    }
+                                    listeners.append(listener_info)
+
+                                    # Get rules for each listener
+                                    if listener_arn:
+                                        try:
+                                            rules_paginator = client.get_paginator("describe_rules")
+                                            for rules_page in rules_paginator.paginate(ListenerArn=listener_arn):
+                                                for rule in rules_page.get("Rules", []):
+                                                    rule_info = {
+                                                        "rule_arn": rule.get("RuleArn"),
+                                                        "priority": rule.get("Priority"),
+                                                        "conditions": rule.get("Conditions", []),
+                                                        "actions": rule.get("Actions", []),
+                                                        "is_default": rule.get("IsDefault", False)
+                                                    }
+                                                    routing_rules.append(rule_info)
+                                        except ClientError as e:
+                                            log_aws_error(e, self.service_name, "describe_rules", listener_arn)
                         except ClientError as e:
                             log_aws_error(e, self.service_name, "describe_listeners", lb_arn)
                         
-                        # Get target groups for the load balancer
+                        # Get target groups and their health status
                         target_groups = []
+                        target_health = []
                         try:
                             tg_paginator = client.get_paginator("describe_target_groups")
                             for tg_page in tg_paginator.paginate(LoadBalancerArn=lb_arn):
                                 for tg in tg_page.get("TargetGroups", []):
-                                    target_groups.append({
+                                    tg_arn = tg.get("TargetGroupArn")
+                                    tg_info = {
                                         "name": tg.get("TargetGroupName"),
                                         "protocol": tg.get("Protocol"),
                                         "port": tg.get("Port"),
                                         "target_type": tg.get("TargetType"),
                                         "vpc_id": tg.get("VpcId"),
-                                    })
+                                        "health_check": tg.get("HealthCheckEnabled", False),
+                                        "health_check_path": tg.get("HealthCheckPath"),
+                                        "health_check_port": tg.get("HealthCheckPort"),
+                                        "health_check_protocol": tg.get("HealthCheckProtocol"),
+                                        "health_check_timeout": tg.get("HealthCheckTimeoutSeconds"),
+                                        "healthy_threshold": tg.get("HealthyThresholdCount"),
+                                        "unhealthy_threshold": tg.get("UnhealthyThresholdCount"),
+                                        "stickiness": tg.get("TargetGroupAttributes", {}).get("stickiness.enabled", False)
+                                    }
+                                    target_groups.append(tg_info)
+
+                                    # Get health status for each target in the target group
+                                    if tg_arn:
+                                        try:
+                                            health_response = client.describe_target_health(TargetGroupArn=tg_arn)
+                                            target_health_info = {
+                                                "target_group_name": tg.get("TargetGroupName"),
+                                                "targets": [
+                                                    {
+                                                        "target_id": target.get("Target", {}).get("Id"),
+                                                        "port": target.get("Target", {}).get("Port"),
+                                                        "health_state": target.get("TargetHealth", {}).get("State"),
+                                                        "reason": target.get("TargetHealth", {}).get("Reason"),
+                                                        "description": target.get("TargetHealth", {}).get("Description")
+                                                    }
+                                                    for target in health_response.get("TargetHealthDescriptions", [])
+                                                ]
+                                            }
+                                            target_health.append(target_health_info)
+                                        except ClientError as e:
+                                            log_aws_error(e, self.service_name, "describe_target_health", tg_arn)
                         except ClientError as e:
                             log_aws_error(e, self.service_name, "describe_target_groups", lb_arn)
                         
@@ -121,6 +175,8 @@ class LoadBalancerScanner(BaseScanner[LoadBalancer]):
                                 availability_zones=availability_zones,
                                 listeners=listeners,
                                 target_groups=target_groups,
+                                target_health=target_health,
+                                routing_rules=routing_rules,
                                 tags=tags,
                             )
                         )

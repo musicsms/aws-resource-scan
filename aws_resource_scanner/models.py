@@ -51,6 +51,11 @@ class EC2Instance(AWSResource):
     security_group_ids: List[str] = Field(default_factory=list)
     iam_instance_profile: Optional[str] = None
     key_name: Optional[str] = None
+    # AMI information
+    ami_id: Optional[str] = None
+    ami_name: Optional[str] = None
+    platform_details: Optional[str] = None
+    architecture: Optional[str] = None
 
 
 class SecurityGroup(AWSResource):
@@ -104,6 +109,9 @@ class LoadBalancer(AWSResource):
     availability_zones: List[str] = Field(default_factory=list)
     listeners: List[Dict[str, Any]] = Field(default_factory=list)
     target_groups: List[Dict[str, Any]] = Field(default_factory=list)
+    # Enhanced target group details
+    target_health: List[Dict[str, Any]] = Field(default_factory=list)
+    routing_rules: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class S3Bucket(AWSResource):
@@ -255,6 +263,78 @@ class VPCPeeringConnection(AWSResource):
     expiration_time: Optional[datetime] = None
 
 
+class RDSInstance(AWSResource):
+    """RDS Instance resource model."""
+
+    resource_type: str = "rds_instance"
+    engine: str
+    engine_version: str
+    instance_class: str
+    status: str
+    storage_type: str
+    allocated_storage: int
+    # Security
+    publicly_accessible: bool = False
+    storage_encrypted: bool = False
+    kms_key_id: Optional[str] = None
+    ca_certificate_identifier: Optional[str] = None
+    security_groups: List[str] = Field(default_factory=list)
+    vpc_security_groups: List[Dict[str, str]] = Field(default_factory=list)
+    # Network
+    endpoint: Optional[Dict[str, Any]] = None
+    vpc_id: Optional[str] = None
+    subnet_group: Optional[str] = None
+    availability_zone: Optional[str] = None
+    multi_az: bool = False
+    # Performance and monitoring
+    performance_insights_enabled: bool = False
+    performance_insights_kms_key_id: Optional[str] = None
+    enhanced_monitoring_arn: Optional[str] = None
+    monitoring_interval: int = 0
+    # Backup and maintenance
+    backup_retention_period: int = 0
+    backup_window: Optional[str] = None
+    maintenance_window: Optional[str] = None
+    latest_restorable_time: Optional[datetime] = None
+    # Cluster info (if part of Aurora cluster)
+    cluster_identifier: Optional[str] = None
+    is_cluster_writer: Optional[bool] = None
+
+
+class RDSCluster(AWSResource):
+    """RDS Cluster resource model (for Aurora)."""
+
+    resource_type: str = "rds_cluster"
+    engine: str
+    engine_version: str
+    status: str
+    # Security
+    storage_encrypted: bool = False
+    kms_key_id: Optional[str] = None
+    iam_database_authentication_enabled: bool = False
+    deletion_protection: bool = False
+    publicly_accessible: bool = False
+    security_groups: List[str] = Field(default_factory=list)
+    vpc_security_groups: List[Dict[str, str]] = Field(default_factory=list)
+    # Network
+    endpoint: Optional[str] = None
+    reader_endpoint: Optional[str] = None
+    port: Optional[int] = None
+    vpc_id: Optional[str] = None
+    subnet_group: Optional[str] = None
+    availability_zones: List[str] = Field(default_factory=list)
+    multi_az: bool = False
+    # Backup and maintenance
+    backup_retention_period: int = 0
+    preferred_backup_window: Optional[str] = None
+    preferred_maintenance_window: Optional[str] = None
+    latest_restorable_time: Optional[datetime] = None
+    # Cluster members
+    members: List[str] = Field(default_factory=list)  # List of instance ARNs
+    reader_instances: List[str] = Field(default_factory=list)
+    writer_instance: Optional[str] = None
+
+
 class ScanResult(BaseModel):
     """Results of an AWS resource scan."""
 
@@ -276,6 +356,8 @@ class ScanResult(BaseModel):
     network_acls: List[NetworkACL] = Field(default_factory=list)
     vpc_endpoints: List[VPCEndpoint] = Field(default_factory=list)
     vpc_peering_connections: List[VPCPeeringConnection] = Field(default_factory=list)
+    rds_instances: List[RDSInstance] = Field(default_factory=list)
+    rds_clusters: List[RDSCluster] = Field(default_factory=list)
 
     class Config:
         """Pydantic config."""

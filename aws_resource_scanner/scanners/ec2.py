@@ -77,6 +77,23 @@ class EC2Scanner(BaseScanner[EC2Instance]):
                             tags = self.parse_tags(instance.get("Tags", []))
                             name = tags.get("Name", instance_id)
                             
+                            # Get AMI information
+                            ami_id = instance.get("ImageId")
+                            ami_name = None
+                            platform_details = instance.get("PlatformDetails")
+                            architecture = instance.get("Architecture")
+                            
+                            # Try to get AMI name if we have an AMI ID
+                            if ami_id:
+                                try:
+                                    ami_response = client.describe_images(ImageIds=[ami_id])
+                                    if ami_response.get("Images"):
+                                        ami = ami_response["Images"][0]
+                                        ami_name = ami.get("Name")
+                                except ClientError as e:
+                                    # AMI might not be accessible or might have been deleted
+                                    log_aws_error(e, self.service_name, "describe_images", ami_id)
+                            
                             # Process all network interfaces
                             network_interfaces = []
                             for interface in instance.get("NetworkInterfaces", []):
@@ -136,6 +153,10 @@ class EC2Scanner(BaseScanner[EC2Instance]):
                                     security_group_ids=security_group_ids,
                                     iam_instance_profile=iam_profile,
                                     key_name=key_name,
+                                    ami_id=ami_id,
+                                    ami_name=ami_name,
+                                    platform_details=platform_details,
+                                    architecture=architecture,
                                     tags=tags,
                                     network_interfaces=network_interfaces,
                                 )
