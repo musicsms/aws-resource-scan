@@ -12,6 +12,7 @@ from aws_resource_scanner.scanners.ec2 import EC2Scanner
 from aws_resource_scanner.scanners.eks import EKSClusterScanner, NodeGroupScanner
 from aws_resource_scanner.scanners.elb import LoadBalancerScanner
 from aws_resource_scanner.scanners.lambda_function import LambdaFunctionScanner
+from aws_resource_scanner.scanners.rds import RDSInstanceScanner, RDSClusterScanner
 from aws_resource_scanner.scanners.s3 import S3BucketScanner
 from aws_resource_scanner.scanners.security_group import SecurityGroupScanner
 from aws_resource_scanner.scanners.vpc import VPCScanner
@@ -177,7 +178,7 @@ class AWSScannerBuilder:
         valid_types = {
             "ec2", "sg", "eks", "node_group", "lb", 
             "s3", "lambda", "asg", "vpc", "subnet", "igw", "nat", 
-            "rtb", "nacl", "endpoint", "peering", "all"
+            "rtb", "nacl", "endpoint", "peering", "rds", "rds_cluster", "all"
         }
         
         for resource_type in resource_types:
@@ -221,7 +222,7 @@ class AWSResourceScanner:
         self.resource_types = resource_types or {
             "ec2", "security_group", "eks", "node_group", "load_balancer",
             "s3", "lambda", "auto_scaling_group", "vpc", "subnet", "igw", 
-            "nat", "rtb", "nacl", "endpoint", "peering"
+            "nat", "rtb", "nacl", "endpoint", "peering", "rds", "rds_cluster"
         }
         self.scanners = {}
         
@@ -273,6 +274,12 @@ class AWSResourceScanner:
             
         if not self.resource_types or "peering" in self.resource_types:
             self.scanners["peering"] = VPCPeeringConnectionScanner(config)
+            
+        if not self.resource_types or "rds" in self.resource_types:
+            self.scanners["rds"] = RDSInstanceScanner(config)
+            
+        if not self.resource_types or "rds_cluster" in self.resource_types:
+            self.scanners["rds_cluster"] = RDSClusterScanner(config)
 
     def scan(self) -> ScanResult:
         """Scan AWS resources based on the configuration.
@@ -363,6 +370,16 @@ class AWSResourceScanner:
             peering_scanner = VPCPeeringConnectionScanner(self.config)
             result.vpc_peering_connections = peering_scanner.scan()
         
+        # RDS instances
+        if not self.resource_types or "rds" in self.resource_types:
+            rds_scanner = RDSInstanceScanner(self.config)
+            result.rds_instances = rds_scanner.scan()
+            
+        # RDS clusters
+        if not self.resource_types or "rds_cluster" in self.resource_types:
+            rds_cluster_scanner = RDSClusterScanner(self.config)
+            result.rds_clusters = rds_cluster_scanner.scan()
+        
         # Log summary
         logger.info(f"Scan complete. Found:")
         logger.info(f"  EC2 instances: {len(result.ec2_instances)}")
@@ -381,6 +398,8 @@ class AWSResourceScanner:
         logger.info(f"  Network ACLs: {len(result.network_acls)}")
         logger.info(f"  VPC Endpoints: {len(result.vpc_endpoints)}")
         logger.info(f"  VPC Peering Connections: {len(result.vpc_peering_connections)}")
+        logger.info(f"  RDS instances: {len(result.rds_instances)}")
+        logger.info(f"  RDS clusters: {len(result.rds_clusters)}")
         
         return result
         

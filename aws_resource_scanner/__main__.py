@@ -44,7 +44,10 @@ def scan(
         help=(
             "Resource types to scan (comma-separated). "
             "Options: ec2, sg (security groups), eks, node_group, lb (load balancers), "
-            "s3, lambda, asg (auto scaling groups), all"
+            "s3, lambda, asg (auto scaling groups), vpc, subnet, igw (internet gateways), "
+            "nat (NAT gateways), rtb (route tables), nacl (network ACLs), "
+            "endpoint (VPC endpoints), peering (VPC peering), "
+            "rds (RDS instances), rds_cluster (RDS Aurora clusters), all"
         ),
     ),
     role_arn: Optional[str] = typer.Option(
